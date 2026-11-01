@@ -1,0 +1,41 @@
+name: Veille du serveur Kopé
+
+# Toutes les 10 minutes, on vérifie que le serveur de Kopé répond.
+# S'il ne répond pas (3 essais), ce contrôle échoue et GitHub envoie un e-mail au propriétaire.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Le serveur répond-il ?
+        run: |
+          for i in 1 2 3; do
+            if curl -fsS --max-time 20 -H 'x-region: eu-west-3' \
+                 https://nkohlcactttqoljejpsv.supabase.co/functions/v1/kope/api/health | grep -q '"ok":true'; then
+              echo "Serveur Kopé : en ligne"; exit 0
+            fi
+            echo "Essai $i : pas de réponse correcte"; sleep 20
+          done
+          echo "::error::Le serveur Kopé ne répond pas"; exit 1
+
+      # Une fois par semaine : petite trace pour que GitHub garde ce contrôle actif.
+      - name: Signe de vie hebdomadaire
+        if: github.event.schedule == '0 6 * * 1'
+        uses: actions/checkout@v4
+      - if: github.event.schedule == '0 6 * * 1'
+        run: |
+          date -u '+%Y-%m-%d %H:%M UTC' > derniere-verification.txt
+          git config user.name 'Veille Kopé'
+          git config user.email 'veille@users.noreply.github.com'
+          git add derniere-verification.txt
+          git commit -m 'Signe de vie hebdomadaire' || true
+          git push
